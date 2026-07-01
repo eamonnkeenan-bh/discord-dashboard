@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BetHero Discord</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Anybody:wght@700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+
+/* --- Password gate --- */
+#gate{
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;background:#0B0F1A;
+  font-family:'DM Sans',sans-serif;color:#C8CDD8;
+}
+#gate-box{
+  text-align:center;max-width:340px;padding:40px;
+}
+#gate-box h1{
+  font-family:'Anybody',sans-serif;font-weight:800;font-size:22px;
+  color:#E8ECF4;letter-spacing:0.02em;margin-bottom:6px;
+}
+#gate-box p{font-size:13px;color:#6B7280;margin-bottom:24px;}
+#gate-box input{
+  width:100%;padding:12px 16px;border-radius:6px;
+  border:1px solid #2A3040;background:#141926;color:#E8ECF4;
+  font-family:'DM Sans',sans-serif;font-size:14px;
+  text-align:center;letter-spacing:0.08em;
+  outline:none;transition:border-color 0.2s;
+}
+#gate-box input:focus{border-color:#4F7DF5;}
+#gate-box input.wrong{border-color:#E54D4D;animation:shake 0.35s;}
+@keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-6px);}75%{transform:translateX(6px);}}
+
+/* --- Main app (hidden until password) --- */
+#app{display:none;}
+body.unlocked #gate{display:none;}
+body.unlocked #app{display:block;}
+
+body{background:#0B0F1A;color:#C8CDD8;font-family:'DM Sans',sans-serif;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+
+/* --- Header --- */
+.hdr{
+  padding:28px 32px 20px;
+  border-bottom:1px solid #1A2030;
+  display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:12px;
+}
+.hdr h1{
+  font-family:'Anybody',sans-serif;font-weight:800;font-size:26px;
+  color:#E8ECF4;letter-spacing:0.01em;line-height:1.1;
+}
+.hdr h1 span{
+  display:block;font-family:'DM Sans',sans-serif;font-weight:400;
+  font-size:12px;color:#6B7280;letter-spacing:0.04em;margin-top:4px;
+}
+.hdr .date-range{
+  font-size:12px;color:#6B7280;
+  font-family:'IBM Plex Mono',monospace;
+}
+
+/* --- Wrap --- */
+.wrap{max-width:1200px;margin:0 auto;padding:24px 28px 80px;}
+
+/* --- KPI row --- */
+.kpis{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+  margin-bottom:24px;
+}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr);}}
+.kpi{
+  background:#111827;border:1px solid #1E2738;border-radius:6px;
+  padding:16px 18px;
+}
+.kpi .label{
+  font-size:10px;text-transform:uppercase;letter-spacing:0.1em;
+  color:#6B7280;margin-bottom:8px;
+}
+.kpi .val{
+  font-family:'Anybody',sans-serif;font-weight:700;
+  font-size:28px;color:#E8ECF4;line-height:1;
+}
+.kpi .sub{font-size:11px;color:#6B7280;margin-top:4px;}
+.kpi .delta{
+  display:inline-block;font-family:'IBM Plex Mono',monospace;
+  font-size:11px;padding:1px 6px;border-radius:3px;margin-top:6px;
+}
+.kpi .delta.up{background:rgba(52,211,153,0.12);color:#34D399;}
+.kpi .delta.down{background:rgba(239,68,68,0.12);color:#EF4444;}
+.kpi .delta.flat{background:rgba(107,114,128,0.12);color:#6B7280;}
+
+/* --- Section --- */
+.section{margin-bottom:28px;}
+.section-title{
+  font-size:13px;font-weight:600;color:#E8ECF4;
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;
+}
+.section-title .tag{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;
+  color:#6B7280;font-weight:400;letter-spacing:0.04em;
+}
+
+/* --- Chart panels --- */
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:800px){.chart-grid{grid-template-columns:1fr;}}
+.chart-panel{
+  background:#111827;border:1px solid #1E2738;border-radius:6px;
+  padding:18px 20px;
+}
+.chart-panel.full{grid-column:1/-1;}
+.chart-panel h3{
+  font-size:12px;font-weight:600;color:#E8ECF4;margin-bottom:14px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.chart-panel h3 .tag{
+  font-family:'IBM Plex Mono',monospace;font-size:10px;
+  color:#6B7280;font-weight:400;
+}
+
+/* --- Bar list (channels, countries, etc.) --- */
+.bar-list{max-height:320px;overflow-y:auto;}
+.bar-row{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 0;border-bottom:1px solid rgba(30,39,56,0.5);
+}
+.bar-row:last-child{border-bottom:none;}
+.bar-name{
+  font-size:12px;color:#9CA3AF;width:160px;flex-shrink:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.bar-track{flex:1;height:5px;background:#1A2030;border-radius:3px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:3px;}
+.bar-val{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;
+  color:#9CA3AF;width:44px;text-align:right;flex-shrink:0;
+}
+
+/* --- Loading / empty states --- */
+.empty{padding:40px;text-align:center;color:#4B5563;font-size:13px;}
+
+/* --- Footer --- */
+footer{
+  max-width:1200px;margin:0 auto;padding:0 28px 40px;
+  font-size:11px;color:#4B5563;
+}
+</style>
+</head>
+<body>
+
+<!-- Password gate -->
+<div id="gate">
+  <div id="gate-box">
+    <h1>BETHERO DISCORD</h1>
+    <p>Enter password to view the dashboard</p>
+    <input type="password" id="pw" placeholder="Password" autofocus>
+  </div>
+</div>
+
+<!-- Dashboard (hidden until authenticated) -->
+<div id="app">
+  <div class="hdr">
+    <h1>BetHero Discord<span>Community Intelligence Dashboard</span></h1>
+    <div class="date-range mono" id="date-range">Loading…</div>
+  </div>
+  <div class="wrap">
+
+    <!-- KPIs -->
+    <div class="kpis" id="kpis"></div>
+
+    <!-- Membership & Growth -->
+    <div class="section">
+      <div class="section-title">Growth <span class="tag">membership over time</span></div>
+      <div class="chart-grid">
+        <div class="chart-panel full"><h3>Total membership <span class="tag">daily</span></h3><canvas id="chart-membership" height="200"></canvas></div>
+        <div class="chart-panel"><h3>Joins by source <span class="tag">daily</span></h3><canvas id="chart-joins-source" height="200"></canvas></div>
+        <div class="chart-panel"><h3>Leavers <span class="tag">by tenure</span></h3><canvas id="chart-leavers" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Engagement -->
+    <div class="section">
+      <div class="section-title">Engagement <span class="tag">activity & retention</span></div>
+      <div class="chart-grid">
+        <div class="chart-panel"><h3>Messages per day <span class="tag">total</span></h3><canvas id="chart-messages" height="200"></canvas></div>
+        <div class="chart-panel"><h3>Communicators <span class="tag">visitors vs % who talked</span></h3><canvas id="chart-communicators" height="200"></canvas></div>
+        <div class="chart-panel"><h3>New member activation <span class="tag">% who opened channels / communicated</span></h3><canvas id="chart-activation" height="200"></canvas></div>
+        <div class="chart-panel"><h3>Muters <span class="tag">by member type</span></h3><canvas id="chart-muters" height="200"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Channels -->
+    <div class="section">
+      <div class="section-title">Channels <span class="tag">latest snapshot</span></div>
+      <div class="chart-grid">
+        <div class="chart-panel"><h3>By readers</h3><div class="bar-list" id="channels-readers"></div></div>
+        <div class="chart-panel"><h3>By messages</h3><div class="bar-list" id="channels-messages"></div></div>
+      </div>
+    </div>
+
+    <!-- Demographics -->
+    <div class="section">
+      <div class="section-title">Demographics <span class="tag">latest snapshot</span></div>
+      <div class="chart-grid">
+        <div class="chart-panel"><h3>Participators by platform</h3><canvas id="chart-platform" height="180"></canvas></div>
+        <div class="chart-panel"><h3>Participators by country</h3><canvas id="chart-country" height="180"></canvas></div>
+        <div class="chart-panel"><h3>Participators by guild tenure</h3><canvas id="chart-guild-tenure" height="180"></canvas></div>
+        <div class="chart-panel"><h3>New members by Discord tenure</h3><canvas id="chart-discord-tenure" height="180"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+  <footer>Data sourced from Discord Server Insights CSVs. Updated weekly.</footer>
+</div>
+
+<script>
+// ─── Password gate ───
+const HASH = "BETHERO";
+const pwInput = document.getElementById("pw");
+pwInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    if (pwInput.value === HASH) {
+      document.body.classList.add("unlocked");
+      sessionStorage.setItem("bh_auth", "1");
+      init();
+    } else {
+      pwInput.classList.add("wrong");
+      setTimeout(() => pwInput.classList.remove("wrong"), 400);
+      pwInput.value = "";
+    }
+  }
+});
+if (sessionStorage.getItem("bh_auth") === "1") {
+  document.body.classList.add("unlocked");
+  window.addEventListener("DOMContentLoaded", init);
+}
+
+// ─── CSV loading ───
+const FILE_MAP = {
+  "guild-total-membership":      "membership",
+  "guild-joins-by-source":       "joins",
+  "guild-leavers":               "leavers",
+  "guild-activation":            "activation",
+  "guild-communicators":          "communicators",
+  "guild-message-activity":       "messages",
+  "guild-muters":                 "muters",
+  "popular-text-channels":        "channels",
+  "new-members-by-discord-tenure":"discord_tenure",
+  "participators-by-guild-tenure":"guild_tenure",
+  "participators-by-platform":    "platform",
+  "participators-by-reg-country": "country",
+};
+
+async function fetchFileList() {
+  // GitHub Pages doesn't support directory listing, so we use a manifest file
+  const res = await fetch("data/manifest.json", {cache:"no-store"});
+  if (!res.ok) throw new Error("Missing data/manifest.json");
+  return await res.json(); // array of filenames
+}
+
+function classifyFile(filename) {
+  for (const [prefix, key] of Object.entries(FILE_MAP)) {
+    if (filename.startsWith(prefix)) return key;
+  }
+  return null;
+}
+
+function parseDate(s) {
+  if (!s) return null;
+  return s.slice(0, 10); // "2026-04-29"
+}
+
+function dedupe(rows, keyFn) {
+  const seen = new Map();
+  for (const r of rows) {
+    const k = keyFn(r);
+    if (!seen.has(k)) seen.set(k, r);
+  }
+  return [...seen.values()];
+}
+
+async function loadAllData() {
+  const files = await fetchFileList();
+  const buckets = {};
+  for (const key of Object.values(FILE_MAP)) buckets[key] = [];
+
+  await Promise.all(files.map(async (fname) => {
+    const type = classifyFile(fname);
+    if (!type) return;
+    const res = await fetch("data/" + fname, {cache:"no-store"});
+    const text = await res.text();
+    const parsed = Papa.parse(text.trim(), {header:true, skipEmptyLines:true});
+    buckets[type].push(...parsed.data);
+  }));
+
+  // Deduplicate time-series by date (+ category for multi-row-per-day files)
+  const dk = r => parseDate(r.day_pt || r.interval_start_timestamp);
+  buckets.membership = dedupe(buckets.membership, dk).sort((a,b) => dk(a).localeCompare(dk(b)));
+  buckets.joins = dedupe(buckets.joins, dk).sort((a,b) => dk(a).localeCompare(dk(b)));
+  buckets.messages = dedupe(buckets.messages, dk).sort((a,b) => dk(a).localeCompare(dk(b)));
+  buckets.communicators = dedupe(buckets.communicators, dk).sort((a,b) => dk(a).localeCompare(dk(b)));
+  buckets.activation = dedupe(buckets.activation, dk).sort((a,b) => dk(a).localeCompare(dk(b)));
+
+  // Multi-row-per-day: dedupe by date + category
+  const dkCat = field => r => parseDate(r.day_pt || r.interval_start_timestamp) + "|" + r[field];
+  buckets.leavers = dedupe(buckets.leavers, dkCat("days_in_guild")).sort((a,b) => dk(a).localeCompare(dk(b)));
+  buckets.muters = dedupe(buckets.muters, dkCat("days_in_guild")).sort((a,b) => dk(a).localeCompare(dk(b)));
+
+  // Snapshot data: take the latest entry per category
+  const latestSnap = (arr, catField) => {
+    const sorted = [...arr].sort((a,b) => dk(b).localeCompare(dk(a)));
+    const seen = new Set();
+    return sorted.filter(r => {
+      const k = r[catField];
+      if (seen.has(k)) return false;
+      seen.add(k); return true;
+    });
+  };
+  buckets.channels = latestSnap(buckets.channels, "channel_name");
+  buckets.platform = latestSnap(buckets.platform, "platform");
+  buckets.country = latestSnap(buckets.country, "country_code");
+  buckets.guild_tenure = latestSnap(buckets.guild_tenure, "tenure");
+  buckets.discord_tenure = latestSnap(buckets.discord_tenure, "tenure");
+
+  return buckets;
+}
+
+// ─── Chart defaults ───
+const COLORS = {
+  blue: "#4F7DF5",
+  blueFill: "rgba(79,125,245,0.12)",
+  green: "#34D399",
+  greenFill: "rgba(52,211,153,0.12)",
+  amber: "#FBBF24",
+  amberFill: "rgba(251,191,36,0.12)",
+  red: "#EF4444",
+  redFill: "rgba(239,68,68,0.12)",
+  purple: "#A78BFA",
+  purpleFill: "rgba(167,139,250,0.12)",
+  gray: "#6B7280",
+};
+
+Chart.defaults.color = "#6B7280";
+Chart.defaults.borderColor = "#1E2738";
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyleWidth = 8;
+Chart.defaults.plugins.legend.labels.boxHeight = 6;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 4;
+Chart.defaults.elements.line.borderWidth = 2;
+Chart.defaults.elements.line.tension = 0.3;
+
+function shortDate(d){
+  const [y,m,dd] = d.split("-");
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return months[parseInt(m)-1] + " " + parseInt(dd);
+}
+
+function lineChart(id, labels, datasets, opts={}){
+  return new Chart(document.getElementById(id), {
+    type:"line",
+    data:{labels, datasets},
+    options:{
+      responsive:true,
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:datasets.length > 1, position:"top"}},
+      scales:{
+        x:{grid:{display:false}, ticks:{maxTicksLimit:12}},
+        y:{beginAtZero:opts.beginAtZero !== false, grid:{color:"#1A2030"}, ...opts.yScale},
+      },
+      ...opts.chartOpts,
+    }
+  });
+}
+
+function barChart(id, labels, datasets, opts={}){
+  return new Chart(document.getElementById(id), {
+    type:"bar",
+    data:{labels, datasets},
+    options:{
+      responsive:true,
+      interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:datasets.length > 1, position:"top"}},
+      scales:{
+        x:{grid:{display:false}, stacked:!!opts.stacked, ticks:{maxTicksLimit:12}},
+        y:{beginAtZero:true, grid:{color:"#1A2030"}, stacked:!!opts.stacked},
+      },
+    }
+  });
+}
+
+function doughnutChart(id, labels, data, colors){
+  return new Chart(document.getElementById(id), {
+    type:"doughnut",
+    data:{labels, datasets:[{data, backgroundColor:colors, borderWidth:0}]},
+    options:{
+      responsive:true,
+      cutout:"60%",
+      plugins:{legend:{position:"bottom"}},
+    }
+  });
+}
+
+function renderBarList(container, items, valKey, nameKey, color="#4F7DF5"){
+  container.innerHTML = "";
+  const filtered = items.filter(i => parseFloat(i[valKey]) > 0)
+    .sort((a,b) => parseFloat(b[valKey]) - parseFloat(a[valKey]));
+  if(!filtered.length){container.innerHTML='<div class="empty">No data</div>';return;}
+  const max = Math.max(...filtered.map(i=>parseFloat(i[valKey])));
+  filtered.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const pct = (parseFloat(item[valKey])/max*100).toFixed(1);
+    row.innerHTML = `
+      <div class="bar-name" title="${item[nameKey]}">${item[nameKey]}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+      <div class="bar-val mono">${parseInt(item[valKey]).toLocaleString()}</div>`;
+    container.appendChild(row);
+  });
+}
+
+// ─── KPI rendering ───
+function renderKPIs(d) {
+  const el = document.getElementById("kpis");
+  const mem = d.membership;
+  const latest = mem[mem.length - 1];
+  const earliest = mem[0];
+  const memberGrowth = parseInt(latest.total_membership) - parseInt(earliest.total_membership);
+  const memberPct = ((memberGrowth / parseInt(earliest.total_membership)) * 100).toFixed(1);
+
+  const totalMsgs = d.messages.reduce((s,r) => s + (parseFloat(r.messages)||0), 0);
+  const avgMsgs = d.messages.length ? Math.round(totalMsgs / d.messages.length) : 0;
+
+  const totalJoins = d.joins.reduce((s,r) => s + (parseFloat(r.total_joins)||0), 0);
+  const totalLeavers = d.leavers.reduce((s,r) => s + (parseFloat(r.leavers)||0), 0);
+
+  const activationRates = d.activation.filter(r => r.pct_opened_channels !== "" && r.pct_opened_channels != null);
+  const avgActivation = activationRates.length
+    ? (activationRates.reduce((s,r) => s + parseFloat(r.pct_opened_channels), 0) / activationRates.length).toFixed(0)
+    : "—";
+
+  const kpis = [
+    {label:"Current members", val:parseInt(latest.total_membership).toLocaleString(),
+     delta:`+${memberGrowth} (${memberPct}%)`, deltaClass:memberGrowth>=0?"up":"down",
+     sub:"over reporting period"},
+    {label:"Total joins", val:totalJoins.toLocaleString(), sub:"in period"},
+    {label:"Total leavers", val:totalLeavers.toLocaleString(), sub:"in period",
+     delta: totalJoins > 0 ? `${((totalLeavers/totalJoins)*100).toFixed(0)}% churn ratio` : "",
+     deltaClass: totalLeavers/totalJoins > 0.5 ? "down" : "up"},
+    {label:"Avg daily messages", val:avgMsgs.toLocaleString(), sub:"per day"},
+    {label:"Avg activation rate", val:avgActivation + "%", sub:"new members opening channels"},
+  ];
+
+  el.innerHTML = kpis.map(k => `
+    <div class="kpi">
+      <div class="label">${k.label}</div>
+      <div class="val">${k.val}</div>
+      ${k.sub ? `<div class="sub">${k.sub}</div>` : ""}
+      ${k.delta ? `<div class="delta ${k.deltaClass}">${k.delta}</div>` : ""}
+    </div>
+  `).join("");
+}
+
+// ─── Build all charts ───
+function renderCharts(d) {
+  const dk = r => parseDate(r.day_pt || r.interval_start_timestamp);
+
+  // Date range
+  const dates = d.membership.map(dk);
+  document.getElementById("date-range").textContent = shortDate(dates[0]) + " — " + shortDate(dates[dates.length-1]);
+
+  // -- Membership --
+  lineChart("chart-membership",
+    dates.map(shortDate),
+    [{label:"Members", data:d.membership.map(r=>parseInt(r.total_membership)),
+      borderColor:COLORS.blue, backgroundColor:COLORS.blueFill, fill:true}]
+  );
+
+  // -- Joins by source --
+  const joinLabels = d.joins.map(r => shortDate(dk(r)));
+  barChart("chart-joins-source", joinLabels, [
+    {label:"Invites", data:d.joins.map(r=>parseFloat(r.invites)||0), backgroundColor:COLORS.blue},
+    {label:"Bot", data:d.joins.map(r=>parseFloat(r.bot_joins)||0), backgroundColor:COLORS.purple},
+    {label:"Other", data:d.joins.map(r=>(parseFloat(r.discovery_joins)||0)+(parseFloat(r.other_joins)||0)+(parseFloat(r.vanity_joins)||0)), backgroundColor:COLORS.gray},
+  ], {stacked:true});
+
+  // -- Leavers --
+  const leaverDates = [...new Set(d.leavers.map(dk))].sort();
+  const newLeavers = leaverDates.map(dt => {
+    const row = d.leavers.find(r => dk(r)===dt && r.days_in_guild.includes("< 1"));
+    return row ? parseFloat(row.leavers)||0 : 0;
+  });
+  const oldLeavers = leaverDates.map(dt => {
+    const row = d.leavers.find(r => dk(r)===dt && r.days_in_guild.includes("1 month+"));
+    return row ? parseFloat(row.leavers)||0 : 0;
+  });
+  barChart("chart-leavers", leaverDates.map(shortDate), [
+    {label:"< 1 month", data:newLeavers, backgroundColor:COLORS.amber},
+    {label:"1 month+", data:oldLeavers, backgroundColor:COLORS.red},
+  ], {stacked:true});
+
+  // -- Messages --
+  lineChart("chart-messages",
+    d.messages.map(r => shortDate(dk(r))),
+    [
+      {label:"Messages", data:d.messages.map(r=>parseFloat(r.messages)||0),
+       borderColor:COLORS.blue, backgroundColor:COLORS.blueFill, fill:true},
+    ]
+  );
+
+  // -- Communicators --
+  const commLabels = d.communicators.map(r => shortDate(dk(r)));
+  lineChart("chart-communicators", commLabels, [
+    {label:"Visitors", data:d.communicators.map(r=>parseFloat(r.visitors)||0),
+     borderColor:COLORS.blue, backgroundColor:"transparent"},
+    {label:"% communicated", data:d.communicators.map(r=>parseFloat(r.pct_communicated)||0),
+     borderColor:COLORS.green, backgroundColor:"transparent", yAxisID:"y1"},
+  ], {
+    chartOpts:{
+      scales:{
+        x:{grid:{display:false}, ticks:{maxTicksLimit:12}},
+        y:{beginAtZero:true, grid:{color:"#1A2030"}, position:"left",
+           title:{display:true, text:"Visitors", color:"#6B7280"}},
+        y1:{beginAtZero:true, grid:{display:false}, position:"right",
+            title:{display:true, text:"% communicated", color:"#6B7280"},
+            ticks:{callback:v=>v+"%"}},
+      }
+    }
+  });
+
+  // -- Activation --
+  const actLabels = d.activation.map(r => shortDate(dk(r)));
+  lineChart("chart-activation", actLabels, [
+    {label:"% opened channels", data:d.activation.map(r=>parseFloat(r.pct_opened_channels)||0),
+     borderColor:COLORS.blue, backgroundColor:COLORS.blueFill, fill:true},
+    {label:"% communicated", data:d.activation.map(r=>parseFloat(r.pct_communicated)||0),
+     borderColor:COLORS.green, backgroundColor:"transparent"},
+  ], {chartOpts:{scales:{
+    x:{grid:{display:false}, ticks:{maxTicksLimit:12}},
+    y:{beginAtZero:true, grid:{color:"#1A2030"}, ticks:{callback:v=>v+"%"}, max:100},
+  }}});
+
+  // -- Muters --
+  const muterDates = [...new Set(d.muters.map(dk))].sort();
+  const newMuters = muterDates.map(dt => {
+    const row = d.muters.find(r => dk(r)===dt && r.days_in_guild.includes("New"));
+    return row ? parseFloat(row.muters)||0 : 0;
+  });
+  const existMuters = muterDates.map(dt => {
+    const row = d.muters.find(r => dk(r)===dt && r.days_in_guild.includes("Existing"));
+    return row ? parseFloat(row.muters)||0 : 0;
+  });
+  barChart("chart-muters", muterDates.map(shortDate), [
+    {label:"New members", data:newMuters, backgroundColor:COLORS.amber},
+    {label:"Existing members", data:existMuters, backgroundColor:COLORS.gray},
+  ], {stacked:true});
+
+  // -- Channel bar lists --
+  renderBarList(document.getElementById("channels-readers"), d.channels, "readers", "channel_name", COLORS.blue);
+  renderBarList(document.getElementById("channels-messages"), d.channels, "messages", "channel_name", COLORS.green);
+
+  // -- Platform doughnut --
+  const platLabels = d.platform.map(r=>r.platform);
+  const platData = d.platform.map(r=>parseFloat(r.participators)||0);
+  doughnutChart("chart-platform", platLabels, platData,
+    [COLORS.blue, COLORS.green, COLORS.amber, COLORS.gray, COLORS.purple]);
+
+  // -- Country doughnut --
+  const countryLabels = d.country.map(r=>r.country_code);
+  const countryData = d.country.map(r=>parseFloat(r.participators)||0);
+  doughnutChart("chart-country", countryLabels, countryData,
+    [COLORS.blue, COLORS.amber, COLORS.green, COLORS.gray, COLORS.purple]);
+
+  // -- Guild tenure doughnut --
+  const gtLabels = d.guild_tenure.map(r=>r.tenure);
+  const gtData = d.guild_tenure.map(r=>parseFloat(r.participators)||0);
+  doughnutChart("chart-guild-tenure", gtLabels, gtData,
+    [COLORS.blue, COLORS.green, COLORS.amber, COLORS.purple, COLORS.gray]);
+
+  // -- Discord tenure doughnut --
+  const dtLabels = d.discord_tenure.map(r=>r.tenure);
+  const dtData = d.discord_tenure.map(r=>parseFloat(r.new_members)||0);
+  doughnutChart("chart-discord-tenure", dtLabels, dtData,
+    [COLORS.blue, COLORS.green, COLORS.amber, COLORS.purple]);
+}
+
+// ─── Init ───
+async function init() {
+  // Check dependencies loaded
+  if (typeof Chart === "undefined" || typeof Papa === "undefined") {
+    document.querySelector(".wrap").innerHTML = `
+      <div class="empty">
+        <p style="font-size:15px;color:#9CA3AF;margin-bottom:8px;">Scripts blocked</p>
+        <p>Chart.js or PapaParse failed to load. A browser extension (ad blocker, VPN, privacy tool) may be blocking CDN scripts.</p>
+        <p style="margin-top:6px;">Try disabling extensions or opening in an incognito window.</p>
+        <p style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4B5563;">
+          Chart.js: ${typeof Chart !== "undefined" ? "OK" : "BLOCKED"} ·
+          PapaParse: ${typeof Papa !== "undefined" ? "OK" : "BLOCKED"}
+        </p>
+      </div>`;
+    return;
+  }
+  try {
+    const data = await loadAllData();
+    renderKPIs(data);
+    renderCharts(data);
+  } catch(e) {
+    console.error(e);
+    document.querySelector(".wrap").innerHTML = `
+      <div class="empty">
+        <p style="font-size:15px;color:#9CA3AF;margin-bottom:8px;">Couldn't load data</p>
+        <p>Make sure data/manifest.json exists and lists your CSV files.</p>
+        <p style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#4B5563;">${e.message}</p>
+      </div>`;
+  }
+}
+</script>
+</body>
+</html>
